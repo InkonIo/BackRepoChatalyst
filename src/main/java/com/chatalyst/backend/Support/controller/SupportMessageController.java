@@ -85,6 +85,11 @@ public class SupportMessageController {
             @RequestParam(required = false) MessageStatus status,
             @RequestParam(required = false) MessagePriority priority,
             @RequestParam(required = false) Long adminId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
             Authentication authentication) {
         try {
             // Проверяем что пользователь админ
@@ -97,12 +102,8 @@ public class SupportMessageController {
                         .body(new MessageResponse("Error: Admin access required"));
             }
 
-            List<SupportMessageResponse> messages;
-            if (status != null || priority != null || adminId != null) {
-                messages = supportMessageService.getMessagesWithFilters(status, priority, adminId);
-            } else {
-                messages = supportMessageService.getAllMessages();
-            }
+            List<SupportMessageResponse> messages = supportMessageService.getMessagesWithAdvancedFilters(
+                    status, priority, adminId, search, sortBy, sortDirection, dateFrom, dateTo);
 
             return ResponseEntity.ok(messages);
         } catch (Exception e) {
@@ -197,6 +198,120 @@ public class SupportMessageController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error assigning message", e);
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        }
+    }
+
+    @PutMapping("/messages/{id}")
+    @Operation(summary = "Update message (Admin only)", description = "Update message subject and content")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Message updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Validation error"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Message not found")
+    })
+    public ResponseEntity<?> updateMessage(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateSupportMessageRequest request,
+            Authentication authentication) {
+        try {
+            UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+            SupportMessageResponse response = supportMessageService.updateMessage(id, userPrincipal.getId(), request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error updating message", e);
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/messages/{id}")
+    @Operation(summary = "Delete message (Admin only)", description = "Delete a support message and all its replies")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Message deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Message not found")
+    })
+    public ResponseEntity<?> deleteMessage(
+            @PathVariable Long id,
+            Authentication authentication) {
+        try {
+            UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+            supportMessageService.deleteMessage(id, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse("Message deleted successfully"));
+        } catch (Exception e) {
+            log.error("Error deleting message", e);
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/replies/{id}")
+    @Operation(summary = "Delete reply (Admin only)", description = "Delete a specific reply")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Reply deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Reply not found")
+    })
+    public ResponseEntity<?> deleteReply(
+            @PathVariable Long id,
+            Authentication authentication) {
+        try {
+            UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+            supportMessageService.deleteReply(id, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse("Reply deleted successfully"));
+        } catch (Exception e) {
+            log.error("Error deleting reply", e);
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        }
+    }
+
+    @PutMapping("/replies/{id}")
+    @Operation(summary = "Update reply (Admin only)", description = "Update reply text")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Reply updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Validation error"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Reply not found")
+    })
+    public ResponseEntity<?> updateReply(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateReplyRequest request,
+            Authentication authentication) {
+        try {
+            UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+            SupportMessageReplyResponse response = supportMessageService.updateReply(id, userPrincipal.getId(), request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error updating reply", e);
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Error: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/admin/stats")
+    @Operation(summary = "Get support statistics (Admin only)", description = "Get statistics for admin dashboard")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Statistics retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
+    })
+    public ResponseEntity<?> getSupportStats(Authentication authentication) {
+        try {
+            UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+            boolean isAdmin = userPrincipal.getAuthorities().stream()
+                    .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"));
+
+            if (!isAdmin) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new MessageResponse("Error: Admin access required"));
+            }
+
+            SupportStatsResponse stats = supportMessageService.getSupportStats();
+            return ResponseEntity.ok(stats);
+        } catch (Exception e) {
+            log.error("Error retrieving support stats", e);
             return ResponseEntity.badRequest()
                     .body(new MessageResponse("Error: " + e.getMessage()));
         }
